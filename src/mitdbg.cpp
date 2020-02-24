@@ -5,14 +5,31 @@ CommandLine::CommandLine(pid_t target): command(""), target(target) {
 }
 
 void CommandLine::input() {
+	std::string buf;
+
 	std::cout << "mitdbg$ ";
-	std::cin >> this->command;
+	std::getline(std::cin, buf);
+	if(buf != "") this->command = buf;
 }
 
 int CommandLine::launch() {
 	/*
+	 * Command launcher processing.
 	 * If command is "quit", terminate target process
 	 */
+	if(this->command == "run" || this->command == "r") {
+		std::cout << "Starting program: ";
+
+		std::string buf;
+		std::ifstream ifs("/proc/" + std::to_string(this->target) + "/cmdline");
+		std::getline(ifs, buf);
+		std::vector<std::string> names = Utils::splitStr(buf, {'\x00'});
+		for(auto &x: names) std::cout << x << " ";
+		std::cout << std::endl;
+
+		ptrace(PTRACE_CONT, this->target, 0, 0);
+	}
+
 	if(this->command == "quit") {
 		kill(this->target, SIGKILL);
 		return DBG_QUIT;
@@ -73,8 +90,6 @@ int MitDBG::parentMain() {
 				if(launchSignal == DBG_QUIT) {
 					return DBG_QUIT;
 				}
-
-				ptrace(PTRACE_SYSCALL, this->target, 0, 0);
 			}
 		} else {
 			err(1, "error status %d, Wait child process\n\t", status);
