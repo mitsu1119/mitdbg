@@ -1,7 +1,7 @@
 DST = ./dst
 INCLUDE = ./include
 SRC = ./src
-OBJS = $(DST)/main.o
+OBJS = $(DST)/main.o $(DST)/mitdbg.o
 CFLAGS = -c -Wall -std=c++17
 
 .PHONY: all

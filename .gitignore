@@ -1,4 +1,7 @@
-dst/
-mitdbg
-a.out
-test*
+*
+!Makefile
+!/include
+!/include/*
+!/src
+!/src/*
+!.gitignore
