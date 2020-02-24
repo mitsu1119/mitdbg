@@ -17,6 +17,7 @@ int main(int argc, char *argv[]) {
 	 * The child process executes and replace myself with a command received in command line.
 	 */
 	pid_t pid = fork();
+	int dbgsignal;
 	if(pid == -1) {
 		err(1, "Could not fork.\n\t");
 		exit(1);
@@ -28,9 +29,15 @@ int main(int argc, char *argv[]) {
 	} else {
 		/* parent process */
 		mitdbg = new MitDBG(pid);
-		if(mitdbg->main() == -1) exit(1);
+		dbgsignal = mitdbg->main();
 	}
-	
+
 	delete mitdbg;
+
+	switch(dbgsignal) {
+	case DBG_ERR:
+		return -1;
+	};
+	
 	return 0;
 }

@@ -9,7 +9,16 @@ void CommandLine::input() {
 	std::cin >> this->command;
 }
 
-void CommandLine::launch() {
+int CommandLine::launch() {
+	/*
+	 * If command is "quit", terminate target process
+	 */
+	if(this->command == "quit") {
+		kill(this->target, SIGKILL);
+		return DBG_QUIT;
+	}
+
+	return DBG_SUCCESS;
 }
 
 // ------------------------ MitDBG class -----------------------------------------
@@ -30,8 +39,6 @@ int MitDBG::firstTrap() {
 	waitpid(this->target, &status, WUNTRACED | WCONTINUED);
 	ptrace(PTRACE_SETOPTIONS, this->target, 0, PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXEC);
 	ptrace(PTRACE_SYSCALL, this->target, 0, 0);
-
-	std::cout << "First... signal " << WSTOPSIG(status) << std::endl;
 	return 0;
 }
 
@@ -41,7 +48,7 @@ int MitDBG::firstTrap() {
  */
 int MitDBG::parentMain() {
 	pid_t w;
-	int signum = 0, status = 0;
+	int signum = 0, status = 0, launchSignal = 0;
 	struct user_regs_struct regs;
 
 	while(1) {
@@ -54,24 +61,29 @@ int MitDBG::parentMain() {
 		if(WIFSTOPPED(status)) {
 			signum = WSTOPSIG(status);
 			if(signum != (SIGTRAP | 0x80)) {
-				std::cout << "Signal " << signum << std::endl;
 				ptrace(PTRACE_SYSCALL, this->target, 0, signum);
 			} else {
 				// trapped start or end of systemcall (SIGTRAP | 0x80)
 				ptrace(PTRACE_GETREGS, this->target, 0, &regs);
-				std::cout << "Systemcall " << regs.orig_rax << std::endl;
+				std::cout << "systemcall " << regs.orig_rax << std::endl;
 				this->commandline->input();
-				this->commandline->launch();
+				launchSignal = this->commandline->launch();
+
+				// If the command is a debug termination command, break this while loop.
+				if(launchSignal == DBG_QUIT) {
+					return DBG_QUIT;
+				}
+
 				ptrace(PTRACE_SYSCALL, this->target, 0, 0);
 			}
 		} else {
 			err(1, "error status %d, Wait child process\n\t", status);
 			kill(this->target, SIGKILL);
-			return -1;
+			return DBG_ERR;
 		}
 	}
 	
-	return 0;
+	return DBG_SUCCESS;
 }
 
 int MitDBG::main() {

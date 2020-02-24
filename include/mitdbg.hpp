@@ -17,7 +17,11 @@ public:
 	CommandLine(pid_t target);
 
 	void input();
-	void launch();
+	int launch();
+};
+
+enum {
+	DBG_ERR = -1, DBG_SUCCESS, DBG_QUIT
 };
 
 // main class
