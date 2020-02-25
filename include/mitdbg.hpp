@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <signal.h>
 #include <unistd.h>
 #include <err.h>
 #include <errno.h>
@@ -46,6 +47,9 @@ private:
 	// get and launch command
 	void input();
 	int launch();
+
+	// kill traced process
+	int killTarget();
 
 	// process while trapping the first (first trapping is end of first execve(...))
 	int firstTrap();
