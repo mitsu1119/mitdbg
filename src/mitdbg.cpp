@@ -1,10 +1,10 @@
 #include "mitdbg.hpp"
 
-// -------------------- CommandLine class -----------------------------------------
-CommandLine::CommandLine(pid_t target): command(""), target(target) {
+// ------------------------ MitDBG class -----------------------------------------
+MitDBG::MitDBG(std::string traced): traced(traced), target(-1), command("") {
 }
 
-void CommandLine::input() {
+void MitDBG::input() {
 	std::string buf;
 
 	std::cout << "mitdbg$ ";
@@ -12,40 +12,34 @@ void CommandLine::input() {
 	if(buf != "") this->command = buf;
 }
 
-int CommandLine::launch() {
-	/*
-	 * Command launcher processing.
-	 * If command is "quit", terminate target process
-	 */
+/*
+ * Command launcher processing.
+ * If command is "quit", terminate target process
+ */
+int MitDBG::launch() {
 	if(this->command == "run" || this->command == "r") {
-		std::cout << "Starting program: ";
+		if(this->target != -1) {
+			kill(this->target, SIGTERM);
+			this->target = -1;
+		}
 
-		std::string buf;
-		std::ifstream ifs("/proc/" + std::to_string(this->target) + "/cmdline");
-		std::getline(ifs, buf);
-		std::vector<std::string> names = Utils::splitStr(buf, {'\x00'});
-		for(auto &x: names) std::cout << x << " ";
-		std::cout << std::endl;
+		std::cout << "Starting program: " << this->traced << std::endl;
+		this->target = fork();
+		if(this->target == -1) {
+			err(1, "Could not fork.\n\t");
+			return DBG_ERR;
+		}
 
+		firstTrap();
 		ptrace(PTRACE_CONT, this->target, 0, 0);
 	}
 
 	if(this->command == "quit") {
-		kill(this->target, SIGKILL);
+		if(this->target != -1) kill(this->target, SIGTERM);
 		return DBG_QUIT;
 	}
 
 	return DBG_SUCCESS;
-}
-
-// ------------------------ MitDBG class -----------------------------------------
-MitDBG::MitDBG(pid_t target): target(target) {
-	commandline = new CommandLine(this->target);
-	firstTrap();
-}
-
-MitDBG::~MitDBG() {
-	delete this->commandline;
 }
 
 /*
@@ -53,48 +47,48 @@ MitDBG::~MitDBG() {
  */
 int MitDBG::firstTrap() {
 	int status = 0;
-	waitpid(this->target, &status, WUNTRACED | WCONTINUED);
+	while(waitpid(this->target, &status, WUNTRACED | WCONTINUED) == -1);
 	ptrace(PTRACE_SETOPTIONS, this->target, 0, PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXEC);
-	ptrace(PTRACE_SYSCALL, this->target, 0, 0);
 	return 0;
 }
 
 /*
  * managing a child process and responsing the signal
- * If get a (SIGTRAP | 0x80) signal, stop child process and manage debugger commands.
  */
 int MitDBG::parentMain() {
+	int dbgsignal = DBG_SUCCESS;
 	pid_t w;
-	int signum = 0, status = 0, launchSignal = 0;
+	int status = 0, signum = 0;
 	struct user_regs_struct regs;
-
 	while(1) {
-		w = waitpid(this->target, &status, WUNTRACED | WCONTINUED);
+		input();
+		dbgsignal = launch();
 
-		if(w == -1) err(1, "errno %d, Wait child process.\n\t", errno);
+		// If the command is a debug termination command, break this while loop.
+		if(dbgsignal == DBG_QUIT) return DBG_QUIT;
 
-		if(WIFEXITED(status)) break;
-		if(WIFSIGNALED(status)) break;
-		if(WIFSTOPPED(status)) {
-			signum = WSTOPSIG(status);
-			if(signum != (SIGTRAP | 0x80)) {
-				ptrace(PTRACE_SYSCALL, this->target, 0, signum);
-			} else {
-				// trapped start or end of systemcall (SIGTRAP | 0x80)
-				ptrace(PTRACE_GETREGS, this->target, 0, &regs);
-				std::cout << "systemcall " << regs.orig_rax << std::endl;
-				this->commandline->input();
-				launchSignal = this->commandline->launch();
+		if(this->target != -1) {
+			w = waitpid(this->target, &status, WUNTRACED | WCONTINUED);
+			if(w == -1) err(1, "errno %d, Wait child process.\n\t", errno);
 
-				// If the command is a debug termination command, break this while loop.
-				if(launchSignal == DBG_QUIT) {
-					return DBG_QUIT;
+			if(WIFEXITED(status)) break;
+			if(WIFSIGNALED(status)) break;
+			if(WIFSTOPPED(status)) {
+				signum = WSTOPSIG(status);
+				if(signum != (SIGTRAP | 0x80)) {
+					std::cout << "not SIGTRAP" << std::endl;
+					ptrace(PTRACE_SYSCALL, this->target, 0, signum);
+				} else {
+					// trapped start or end of systemcall (SIGTRAP | 0x80)
+					ptrace(PTRACE_GETREGS, this->target, 0, &regs);
+					std::cout << "systemcall " << regs.orig_rax << std::endl;
 				}
+			} else {
+				err(1, "error status %d, Wait child process\n\t", status);
+				kill(this->target, SIGKILL);
+				this->target = -1;
+				return DBG_ERR;
 			}
-		} else {
-			err(1, "error status %d, Wait child process\n\t", status);
-			kill(this->target, SIGKILL);
-			return DBG_ERR;
 		}
 	}
 	
@@ -102,6 +96,34 @@ int MitDBG::parentMain() {
 }
 
 int MitDBG::main() {
-	return parentMain();
+	int status = 0;
+	
+	// Call fork() once to determine if it is the parent process.
+	pid_t pid = fork();
+
+	if(pid == -1) {
+		err(1, "Could not fork.\n\t");
+		return DBG_ERR;
+	} else if(pid == 0) {
+		/* child process */
+		// The child process executes and replace myself with a command received in command line.
+		if(ptrace(PTRACE_TRACEME, 0, NULL, NULL) != -1) execl(this->traced.c_str(), this->traced.c_str(), NULL);
+		err(1, "errno %d, PTRACE_TRACEME\n\t", errno);
+		return DBG_ERR;
+	} else {
+		/* parent process */
+		
+		// kill child process for determination
+		kill(pid, SIGTERM);
+
+		// Parent process collects the child exit information.
+		// Without this code, child process that should have killed remains as zonbie.
+		waitpid(pid, &status, 0);
+
+		/* parent main loop */
+		parentMain();
+	}
+
+	return DBG_SUCCESS;
 }
 

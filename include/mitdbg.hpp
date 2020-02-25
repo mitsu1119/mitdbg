@@ -31,19 +31,6 @@ public:
 	}
 };
 
-// command line process class
-class CommandLine {
-private:
-	std::string command;
-	pid_t target;
-
-public:
-	CommandLine(pid_t target);
-
-	void input();
-	int launch();
-};
-
 enum {
 	DBG_ERR = -1, DBG_SUCCESS, DBG_QUIT
 };
@@ -51,8 +38,14 @@ enum {
 // main class
 class MitDBG {
 private:
+	std::string traced;
 	pid_t target;
-	CommandLine *commandline;
+
+	std::string command;
+
+	// get and launch command
+	void input();
+	int launch();
 
 	// process while trapping the first (first trapping is end of first execve(...))
 	int firstTrap();
@@ -61,8 +54,7 @@ private:
 	int parentMain();
 
 public:
-	MitDBG(pid_t target);
-	~MitDBG();
+	MitDBG(std::string traced);
 
 	int main();
 };
