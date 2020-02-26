@@ -37,6 +37,15 @@ enum {
 	DBG_ERR = -1, DBG_SUCCESS, DBG_QUIT, DBG_RUN
 };
 
+class Breakpoint {
+public:
+	inline Breakpoint(void *addr, long originalCode): addr(addr), originalCode(originalCode) {
+	}
+
+	void *addr;
+	long originalCode;
+};
+
 // main class
 class MitDBG {
 private:
@@ -46,12 +55,17 @@ private:
 	std::string command;
 	std::vector<std::string> commandArgv;
 
+	std::vector<Breakpoint> breaks;
+
 	// get and launch command
 	void input();
 	int launch();
 
 	// kill traced process
 	int killTarget();
+
+	// set breakpoint
+	int setBreak(void *addr);
 
 	// process while trapping the first (first trapping is end of first execve(...))
 	int firstTrap();

@@ -63,7 +63,6 @@ int MitDBG::launch() {
 }
 
 int MitDBG::killTarget() {
-	std::cout << "killtarget = " << this->target << std::endl;
 	if(this->target != -1) {
 		kill(this->target, SIGKILL);
 		
@@ -85,13 +84,24 @@ int MitDBG::killTarget() {
 	return DBG_SUCCESS;
 }
 
+int MitDBG::setBreak(void *addr) {
+	long originalCode;
+
+	if(this->target != -1) {
+		originalCode = ptrace(PTRACE_PEEKTEXT, this->target, addr, NULL);
+		ptrace(PTRACE_POKETEXT, this->target, addr, ((original_text & 0xffffffffffffff00) | 0xcc));
+		this->breaks.emplace_back(addr, originalCode);
+		std::cout << "Breakpoint " << this->breaks.size() << " at " << std::hex << addr << std::endl;
+	}
+
+	return DBG_SUCCESS;
+}
 
 /*
  * setting ptrace(PTRACE_SETOPTIONS, ...)
  */
 int MitDBG::firstTrap() {
-	int status = 0;
-	pid_t w = waitpid(this->target, &status, WUNTRACED | WCONTINUED);
+	pid_t w = waitpid(this->target, NULL, WUNTRACED | WCONTINUED);
 	if(w == -1) err(1, "errno %d, Wait child process.\n\t", errno);
 
 	ptrace(PTRACE_SETOPTIONS, this->target, 0, PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXEC);
@@ -118,7 +128,7 @@ int MitDBG::parentMain() {
 			if(w == -1) err(1, "errno %d, Wait child process.\n\t", errno);
 
 			if(WIFEXITED(status)) {
-				std::cout << "[process " << this->target << " exited normaly]" << std::endl;
+				std::cout << "[process " << this->target << " exited normaly]" << std::endl << std::endl;
 				this->target = -1;
 			} else if(WIFSIGNALED(status)) {
 				signum = WSTOPSIG(status);
