@@ -4,13 +4,14 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <signal.h>
+#include <csignal>
 #include <unistd.h>
 #include <err.h>
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
+#include "signame.hpp"
 
 class Utils {
 public:
@@ -43,6 +44,7 @@ private:
 	pid_t target;
 
 	std::string command;
+	std::vector<std::string> commandArgv;
 
 	// get and launch command
 	void input();

@@ -9,7 +9,10 @@ void MitDBG::input() {
 
 	std::cout << "mitdbg$ ";
 	std::getline(std::cin, buf);
-	if(buf != "") this->command = buf;
+	if(buf != "") {
+		this->commandArgv = Utils::splitStr(buf, {' '});
+		this->command = this->commandArgv[0];
+	}
 }
 
 /*
@@ -17,6 +20,14 @@ void MitDBG::input() {
  * If command is "quit", terminate target process
  */
 int MitDBG::launch() {
+	if(this->command == "file") {
+		if(this->commandArgv.size() <= 1) {
+			std::cout << "No executable file now." << std::endl;
+		} else {
+			this->traced = this->commandArgv[1];
+		}
+	}
+
 	if(this->command == "run" || this->command == "r") {
 		if(this->target != -1) killTarget();
 
@@ -103,20 +114,17 @@ int MitDBG::parentMain() {
 
 			if(WIFEXITED(status)) {
 				std::cout << "[process " << this->target << " exited normaly]" << std::endl;
-			}
-
-			if(WIFSIGNALED(status)) {
+				this->target = -1;
+			} else if(WIFSIGNALED(status)) {
 				signum = WSTOPSIG(status);
 				std::cout << "[process " << this->target << " exited signal " << signum << "]" << std::endl;
-			}
-
-			if(WIFSTOPPED(status)) {
+				this->target = -1;
+			} else if(WIFSTOPPED(status)) {
 				signum = WSTOPSIG(status);
 				if(signum != (SIGTRAP | 0x80)) {
-					std::string signame = std::string(sys_siglist[signum]);
-					std::transform(signame.cbegin(), signame.cend(), signame.begin(), toupper);
-					std::cout << "Program received signal SIG" << signame << std::endl;
-					std::cout << "Stopped reason: SIG" << signame << std::endl;
+					std::string signame = signum2name(signum);
+					std::cout << "Program received signal " << signame << std::endl;
+					std::cout << "Stopped reason: " << signame << std::endl;
 				} else {
 					// trapped start or end of systemcall (SIGTRAP | 0x80)
 					ptrace(PTRACE_GETREGS, this->target, 0, &regs);

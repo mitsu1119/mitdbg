@@ -1,0 +1,12 @@
+echo "#include \"signame.hpp\""
+echo ""
+echo -e "std::vector<_signallist> siglist = {"
+echo "#include <signal.h>" | g++ -E -dD -xc++ - | awk '$2~/^SIG[A-Z]/ && $3~/[0-9]+/ && (seen[$3]++ == 0) { print "\t#ifdef "$2"\n\t\t {\""$2"\", "$2"},\n\t#endif" }' 
+echo -e "};"
+echo ""
+echo -e "std::string signum2name(int signum) {"
+echo -e "\tfor(size_t n = 0; n < siglist.size(); n++) {"
+echo -e "\t\tif(siglist[n].signum == signum) return siglist[n].name;"
+echo -e "\t}"
+echo -e "return \"\";"
+echo -e "}"
