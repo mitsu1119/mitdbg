@@ -26,6 +26,8 @@ int MitDBG::launch() {
 		} else {
 			this->traced = this->commandArgv[1];
 		}
+
+		return DBG_SUCCESS;
 	}
 
 	if(this->command == "run" || this->command == "r") {
@@ -47,6 +49,8 @@ int MitDBG::launch() {
 			firstTrap();
 			ptrace(PTRACE_CONT, this->target, 0, 0);
 		}
+
+		return DBG_RUN;
 	}
 
 	if(this->command == "quit") {
@@ -59,6 +63,7 @@ int MitDBG::launch() {
 }
 
 int MitDBG::killTarget() {
+	std::cout << "killtarget = " << this->target << std::endl;
 	if(this->target != -1) {
 		kill(this->target, SIGKILL);
 		
@@ -108,7 +113,7 @@ int MitDBG::parentMain() {
 		// If the command is a debug termination command, break this while loop.
 		if(dbgsignal == DBG_QUIT) return DBG_QUIT;
 
-		if(this->target != -1) {
+		if(this->target != -1 && dbgsignal == DBG_RUN) {
 			w = waitpid(this->target, &status, WUNTRACED | WCONTINUED);
 			if(w == -1) err(1, "errno %d, Wait child process.\n\t", errno);
 
@@ -124,7 +129,7 @@ int MitDBG::parentMain() {
 				if(signum != (SIGTRAP | 0x80)) {
 					std::string signame = signum2name(signum);
 					std::cout << "Program received signal " << signame << std::endl;
-					std::cout << "Stopped reason: " << signame << std::endl;
+					std::cout << "Stopped reason: " << signame << std::endl << std::endl;
 				} else {
 					// trapped start or end of systemcall (SIGTRAP | 0x80)
 					ptrace(PTRACE_GETREGS, this->target, 0, &regs);

@@ -34,7 +34,7 @@ public:
 };
 
 enum {
-	DBG_ERR = -1, DBG_SUCCESS, DBG_QUIT
+	DBG_ERR = -1, DBG_SUCCESS, DBG_QUIT, DBG_RUN
 };
 
 // main class
