@@ -1,7 +1,79 @@
 #include "mitdbg.hpp"
 
+// ------------------------ MyElf class ------------------------------------------
+MyElf::MyElf(std::string fileName) {
+	std::ifstream ifs(fileName);
+	if(ifs.fail()) {
+		err(1, "Faild to open %s.", fileName.c_str());
+	} else {
+		std::string s((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+		this->head = new char[s.size()];
+		s.copy(this->head, s.size());
+
+		this->ehdr = (Elf64_Ehdr *)this->head;
+		this->shdr = (Elf64_Shdr *)(this->head + this->ehdr->e_shoff);
+		this->phdr = (Elf64_Phdr *)(this->head + this->ehdr->e_phoff);
+		ifs.close();
+
+		std::cout << "Symbols:" << std::endl;
+
+		Elf64_Shdr *strtab = getShdr(".strtab");
+		Elf64_Shdr *symtab = getShdr(".symtab");
+		Elf64_Sym *symb;
+		char *symbname;
+
+		symb = (Elf64_Sym *)(this->head + symtab->sh_offset);
+		for(size_t i = 0; i < symtab->sh_size / symtab->sh_entsize; i++) {
+			if(symb->st_name) {
+				symbname = (char *)(this->head + strtab->sh_offset + symb->st_name);
+				std::cout << "\t[" << i << "]\t" << symbname << std::endl;
+			}
+			symb = (Elf64_Sym *)((char *)symb + symtab->sh_entsize);
+		}
+	}
+}
+
+MyElf::~MyElf() {
+	delete[] head;
+}
+
+Elf64_Shdr *MyElf::getShstrtab() {
+	return (Elf64_Shdr *)((char *)this->shdr + this->ehdr->e_shentsize * this->ehdr->e_shstrndx);
+}
+
+Elf64_Shdr *MyElf::getShdr(std::string name) {
+	Elf64_Shdr *shdrL = this->shdr;
+	Elf64_Shdr *shstr = getShstrtab();
+	char *sectionName;
+
+	for(size_t i = 0; i < this->ehdr->e_shnum; i++) {
+		sectionName = (char *)(this->head + shstr->sh_offset + shdrL->sh_name);
+		if(!strcmp(sectionName, name.c_str())) break;
+		shdrL = (Elf64_Shdr *)((char *)shdrL + this->ehdr->e_shentsize);
+	}
+	return shdrL;
+}
+
+bool MyElf::isElf() {
+	if(this->ehdr->e_ident[EI_MAG0] == ELFMAG0 && this->ehdr->e_ident[EI_MAG1] == ELFMAG1 && this->ehdr->e_ident[EI_MAG2] == ELFMAG2 && this->ehdr->e_ident[EI_MAG3] == ELFMAG3) return true;
+	return false;
+}
+
 // ------------------------ MitDBG class -----------------------------------------
 MitDBG::MitDBG(std::string traced): traced(Utils::getExecPath(traced)), target(-1), baseAddr(0), command("") {
+	this->targetElf = nullptr;
+
+	if(readElf() == 0) {
+		if(!this->targetElf->isElf()) {
+			this->traced = "";
+			delete this->targetElf;
+			this->targetElf = nullptr;
+		}
+	}
+}
+
+MitDBG::~MitDBG() {
+	if(this->targetElf != nullptr) delete this->targetElf;
 }
 
 void MitDBG::input() {
@@ -13,6 +85,25 @@ void MitDBG::input() {
 		this->commandArgv = Utils::splitStr(buf, {' '});
 		this->command = this->commandArgv[0];
 	}
+}
+
+int MitDBG::readElf() {
+	std::cout << "Reading symbols from " << this->traced << std::endl;
+
+	std::ifstream ifs(this->traced);
+	if(ifs.fail()) {
+		err(1, "Failed to open %s", this->traced.c_str());
+		return 1;
+	}
+
+	if(this->targetElf != nullptr) {
+		delete this->targetElf;
+		this->targetElf = nullptr;
+	}
+
+	this->targetElf = new MyElf(this->traced);
+
+	return 0;
 }
 
 /*

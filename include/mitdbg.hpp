@@ -1,13 +1,15 @@
 #pragma once
 #include <iostream>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <csignal>
+#include <cstring>
+#include <cstdlib>
 #include <unistd.h>
+#include <elf.h>
 #include <err.h>
 #include <errno.h>
 #include <sys/wait.h>
@@ -64,6 +66,26 @@ public:
 	}	
 };
 
+class MyElf {
+private:
+	char *head;
+	Elf64_Ehdr *ehdr;
+	Elf64_Shdr *shdr;
+	Elf64_Phdr *phdr;
+
+	// get .shstrtab section
+	Elf64_Shdr *getShstrtab();
+
+	// get section header named @name
+	Elf64_Shdr *getShdr(std::string name);
+
+public:
+	MyElf(std::string fileName);
+	~MyElf();
+
+	bool isElf();
+};
+
 enum {
 	DBG_ERR = -1, DBG_SUCCESS, DBG_QUIT, DBG_RUN
 };
@@ -83,6 +105,7 @@ private:
 	fs::path traced;
 	pid_t target;
 
+	MyElf *targetElf;
 	u64 baseAddr;
 
 	std::string command;
@@ -93,6 +116,9 @@ private:
 	// get and launch command
 	void input();
 	int launch();
+
+	// leading this->traced symbol
+	int readElf();
 
 	// kill traced process
 	int killTarget();
@@ -108,6 +134,7 @@ private:
 
 public:
 	MitDBG(std::string traced);
+	~MitDBG();
 
 	int main();
 };
