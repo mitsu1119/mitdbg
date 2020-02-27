@@ -1,5 +1,7 @@
 #pragma once
 #include <iostream>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -13,7 +15,24 @@
 #include <sys/user.h>
 #include "signame.hpp"
 
+namespace fs = std::filesystem;
+
+using u64 = uint_fast64_t;
+
 class Utils {
+private:
+	static std::string getPath(std::string &name, std::string path) {
+		if(path == "") return "";
+		std::vector<std::string> paths = Utils::splitStr(path, {':'});
+
+		for(size_t i = 0; i < paths.size(); i++) {
+			std::string file = paths[i] + "/" + name;
+			if(access(file.c_str(), X_OK) == 0) return file;
+		}
+
+		return "";
+	}
+
 public:
 	// string splitter
 	static std::vector<std::string> splitStr(const std::string &str, std::vector<char> &&delim) {
@@ -31,6 +50,18 @@ public:
 		if(!x.empty()) elems.emplace_back(x);
 		return elems;
 	}
+
+	// get executable path
+	static std::string getExecPath(std::string &path) {
+		if(path.size() == 0) return "";
+		if(path[0] == '.') {
+			std::string file = fs::absolute(path);
+			file = fs::canonical(file);
+			return file;
+		}
+
+		return Utils::getPath(path, std::getenv("PATH"));
+	}	
 };
 
 enum {
@@ -49,8 +80,10 @@ public:
 // main class
 class MitDBG {
 private:
-	std::string traced;
+	fs::path traced;
 	pid_t target;
+
+	u64 baseAddr;
 
 	std::string command;
 	std::vector<std::string> commandArgv;

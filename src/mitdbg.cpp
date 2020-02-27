@@ -1,7 +1,7 @@
 #include "mitdbg.hpp"
 
 // ------------------------ MitDBG class -----------------------------------------
-MitDBG::MitDBG(std::string traced): traced(traced), target(-1), command("") {
+MitDBG::MitDBG(std::string traced): traced(Utils::getExecPath(traced)), target(-1), baseAddr(0), command("") {
 }
 
 void MitDBG::input() {
@@ -24,7 +24,7 @@ int MitDBG::launch() {
 		if(this->commandArgv.size() <= 1) {
 			std::cout << "No executable file now." << std::endl;
 		} else {
-			this->traced = this->commandArgv[1];
+			this->traced = Utils::getExecPath(this->commandArgv[1]);
 		}
 
 		return DBG_SUCCESS;
@@ -33,7 +33,7 @@ int MitDBG::launch() {
 	if(this->command == "run" || this->command == "r") {
 		if(this->target != -1) killTarget();
 
-		std::cout << "Starting program: " << this->traced << std::endl;
+		std::cout << "Starting program: " << this->traced.native() << std::endl;
 		this->target = fork();
 		if(this->target == -1) {
 			err(1, "Could not fork.\n\t");
@@ -89,7 +89,7 @@ int MitDBG::setBreak(void *addr) {
 
 	if(this->target != -1) {
 		originalCode = ptrace(PTRACE_PEEKTEXT, this->target, addr, NULL);
-		ptrace(PTRACE_POKETEXT, this->target, addr, ((original_text & 0xffffffffffffff00) | 0xcc));
+		ptrace(PTRACE_POKETEXT, this->target, addr, ((originalCode & 0xffffffffffffff00) | 0xcc));
 		this->breaks.emplace_back(addr, originalCode);
 		std::cout << "Breakpoint " << this->breaks.size() << " at " << std::hex << addr << std::endl;
 	}
@@ -105,6 +105,15 @@ int MitDBG::firstTrap() {
 	if(w == -1) err(1, "errno %d, Wait child process.\n\t", errno);
 
 	ptrace(PTRACE_SETOPTIONS, this->target, 0, PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXEC);
+
+	// get process base address
+	std::ifstream ifs("/proc/" + std::to_string(this->target) + "/maps");
+	std::string buf;
+	std::getline(ifs, buf);
+	buf = Utils::splitStr(buf, {' ','-'})[0];
+	std::cout << buf << std::endl;
+	this->baseAddr= std::stoull(buf, nullptr, 16);
+
 	return 0;
 }
 
