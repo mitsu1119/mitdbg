@@ -26,7 +26,8 @@ MyElf::MyElf(std::string fileName) {
 		for(size_t i = 0; i < symtab->sh_size / symtab->sh_entsize; i++) {
 			if(symb->st_name) {
 				symbname = (char *)(this->head + strtab->sh_offset + symb->st_name);
-				std::cout << "\t[" << i << "]\t" << symbname << std::endl;
+				std::cout << "\t[" << i << "]\t" << symbname << " " << std::hex << "0x" << symb->st_value << std::endl;
+				this->funcSymbols[std::string(symbname)] = symb->st_value;
 			}
 			symb = (Elf64_Sym *)((char *)symb + symtab->sh_entsize);
 		}
@@ -144,6 +145,30 @@ int MitDBG::launch() {
 		return DBG_RUN;
 	}
 
+	if(this->command == "start") {
+		if(this->target != -1) killTarget();
+	
+		std::cout << "Starting program: " << this->traced.native() << std::endl;
+		this->target = fork();
+		if(this->target == -1) {
+			err(1, "Could not fork.\n\t");
+			return DBG_ERR;
+		} else if(this->target == 0) {
+			/* child process */
+			// The child process executes and replace myself with a command received in command line.
+			if(ptrace(PTRACE_TRACEME, 0, NULL, NULL) != -1) execl(this->traced.c_str(), this->traced.c_str(), NULL);
+			err(1, "errno %d, PTRACE_TRACEME\n\t", errno);
+			return DBG_ERR;
+		} else {
+			/* main process */
+			firstTrap();
+			setBreak("main");
+			ptrace(PTRACE_CONT, this->target, 0, 0);
+		}
+
+		return DBG_RUN;
+	}
+
 	if(this->command == "quit") {
 		if(this->target != -1) killTarget();
 
@@ -187,6 +212,25 @@ int MitDBG::setBreak(void *addr) {
 
 	return DBG_SUCCESS;
 }
+
+int MitDBG::setBreak(std::string funcName) {
+	long originalCode;
+	void *addr = (void *)(this->targetElf->funcSymbols[funcName] + this->baseAddr);
+	if((u64)addr == 0) {
+		err(1, "The function %s was not found.", funcName.c_str());
+		return DBG_ERR;
+	}
+
+	if(this->target != -1) {
+		originalCode = ptrace(PTRACE_PEEKTEXT, this->target, addr, NULL);
+		ptrace(PTRACE_POKETEXT, this->target, addr, ((originalCode & 0xffffffffffffff00) | 0xcc));
+		this->breaks.emplace_back(addr, originalCode);
+		std::cout << "Breakpoint " << this->breaks.size() << " at " << std::hex << addr << std::endl;
+	}
+
+	return DBG_SUCCESS;
+}
+
 
 /*
  * setting ptrace(PTRACE_SETOPTIONS, ...)

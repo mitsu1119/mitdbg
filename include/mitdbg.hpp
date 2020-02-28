@@ -5,10 +5,12 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
 #include <csignal>
 #include <cstring>
 #include <cstdlib>
 #include <unistd.h>
+#include <cxxabi.h>
 #include <elf.h>
 #include <err.h>
 #include <errno.h>
@@ -83,6 +85,8 @@ public:
 	MyElf(std::string fileName);
 	~MyElf();
 
+	std::unordered_map<std::string, u64> funcSymbols;
+
 	bool isElf();
 };
 
@@ -125,6 +129,8 @@ private:
 
 	// set breakpoint
 	int setBreak(void *addr);
+	// set breakpoint at start address of the function named @funcName
+	int setBreak(std::string funcName);	
 
 	// process while trapping the first (first trapping is end of first execve(...))
 	int firstTrap();
