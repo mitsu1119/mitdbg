@@ -231,6 +231,13 @@ int MitDBG::setBreak(std::string funcName) {
 	return DBG_SUCCESS;
 }
 
+i64 MitDBG::searchBreak(void *addr) {
+	if(this->breaks.size() == 0) return -1;
+	for(size_t i = 0; i < this->breaks.size(); i++) {
+		if(this->breaks[i].addr == addr) return i;
+	}
+	return -1;
+}
 
 /*
  * setting ptrace(PTRACE_SETOPTIONS, ...)
@@ -246,10 +253,39 @@ int MitDBG::firstTrap() {
 	std::string buf;
 	std::getline(ifs, buf);
 	buf = Utils::splitStr(buf, {' ','-'})[0];
-	std::cout << buf << std::endl;
 	this->baseAddr= std::stoull(buf, nullptr, 16);
 
 	return 0;
+}
+
+int MitDBG::printRegisters() {
+	struct user_regs_struct regs;
+	ptrace(PTRACE_GETREGS, this->target, 0, &regs);
+	std::cout << "[----------------------------------registers-----------------------------------]" << std::endl;
+	std::cout << "RAX: 0x" << std::hex << regs.rax << std::endl;
+	std::cout << "RBX: 0x" << std::hex << regs.rbx << std::endl;
+	std::cout << "RCX: 0x" << std::hex << regs.rcx << std::endl;
+	std::cout << "RDX: 0x" << std::hex << regs.rdx << std::endl;
+	std::cout << "RSI: 0x" << std::hex << regs.rsi << std::endl;
+	std::cout << "RDI: 0x" << std::hex << regs.rdi << std::endl;
+	std::cout << "RBP: 0x" << std::hex << regs.rbp << std::endl;
+	std::cout << "RSP: 0x" << std::hex << regs.rsp << std::endl;
+	std::cout << "RIP: 0x" << std::hex << regs.rip << std::endl;
+	std::cout << "R8 : 0x" << std::hex << regs.r8 << std::endl;
+	std::cout << "R9 : 0x" << std::hex << regs.r9 << std::endl;
+	std::cout << "R10: 0x" << std::hex << regs.r10 << std::endl;
+	std::cout << "R11: 0x" << std::hex << regs.r11 << std::endl;
+	std::cout << "R12: 0x" << std::hex << regs.r12 << std::endl;
+	std::cout << "R13: 0x" << std::hex << regs.r13 << std::endl;
+	std::cout << "R14: 0x" << std::hex << regs.r14 << std::endl;
+	std::cout << "R15: 0x" << std::hex << regs.r15 << std::endl;
+	std::cout << "EFLAGS: 0x" << std::hex << regs.eflags << std::endl;
+
+	return DBG_SUCCESS;
+}
+
+void MitDBG::printSLine() {
+	std::cout << "[------------------------------------------------------------------------------]" << std::endl;
 }
 
 /*
@@ -280,14 +316,21 @@ int MitDBG::parentMain() {
 				this->target = -1;
 			} else if(WIFSTOPPED(status)) {
 				signum = WSTOPSIG(status);
-				if(signum != (SIGTRAP | 0x80)) {
-					std::string signame = signum2name(signum);
-					std::cout << "Program received signal " << signame << std::endl;
-					std::cout << "Stopped reason: " << signame << std::endl << std::endl;
-				} else {
+				if(signum == (SIGTRAP | 0x80)) {
 					// trapped start or end of systemcall (SIGTRAP | 0x80)
 					ptrace(PTRACE_GETREGS, this->target, 0, &regs);
 					std::cout << "systemcall " << regs.orig_rax << std::endl;
+				} else if(signum == SIGTRAP) {
+					// get to break point
+					ptrace(PTRACE_GETREGS, this->target, 0, &regs);
+					u64 originalAddr = regs.rip - 1;
+					printRegisters();
+					printSLine();
+					std::cout << "Breakpoint " << searchBreak((void *)originalAddr) + 1 << ", " << std::hex << originalAddr << std::endl;
+				} else if(signum != (SIGTRAP | 0x80)) {
+					std::string signame = signum2name(signum);
+					std::cout << "Program received signal " << signame << std::endl;
+					std::cout << "Stopped reason: " << signame << std::endl << std::endl;
 				}
 			} else {
 				err(1, "error status %d, Wait child process\n\t", status);

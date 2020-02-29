@@ -22,6 +22,7 @@
 namespace fs = std::filesystem;
 
 using u64 = uint_fast64_t;
+using i64 = int_fast64_t;
 
 class Utils {
 private:
@@ -132,8 +133,17 @@ private:
 	// set breakpoint at start address of the function named @funcName
 	int setBreak(std::string funcName);	
 
+	// get "breaks" index from break point address
+	i64 searchBreak(void *addr);
+
 	// process while trapping the first (first trapping is end of first execve(...))
 	int firstTrap();
+
+	// output registers
+	int printRegisters();
+
+	// output stlip line
+	void printSLine();
 
 	// parent main loop
 	int parentMain();
