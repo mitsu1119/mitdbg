@@ -60,6 +60,11 @@ bool MyElf::isElf() {
 	return false;
 }
 
+bool MyElf::isExistFuncSymbol(std::string funcName) {
+	if(this->funcSymbols.count(funcName) == 0) return false;
+	return true;
+}
+
 // ------------------------ MitDBG class -----------------------------------------
 MitDBG::MitDBG(std::string traced): traced(Utils::getExecPath(traced)), target(-1), baseAddr(0), command("") {
 	this->targetElf = nullptr;
@@ -167,6 +172,40 @@ int MitDBG::launch() {
 		}
 
 		return DBG_RUN;
+	}
+
+	if(this->command == "disas") {
+		if(this->commandArgv.size() <= 1) {
+			std::cout << "No frame selected." << std::endl;
+		} else {
+			if(!this->targetElf->isExistFuncSymbol(this->commandArgv[1])) {
+				std::cout << "Function " << this->commandArgv[1] << "is not found. Try the \"file\" command." << std::endl;
+			} else {
+				FILE *fp;
+				std::string str;
+				std::cout << "Dump of assembler code for function " << this->commandArgv[1] << ":";
+				std::cout << std::endl;
+				std::string com = "objdump -d -M intel " + this->traced.native() + " --disassemble=" + this->commandArgv[1];
+				std::cout << "From \"" << com << "\"" << std::endl;
+				fp = popen(com.c_str(), "r");
+				__gnu_cxx::stdio_filebuf<char> *fb = new __gnu_cxx::stdio_filebuf<char>(fp, std::ios_base::in);
+				std::istream *in = new std::istream((std::streambuf *)fb);
+				while(std::getline(*in, str)) {
+					if(str.find(this->commandArgv[1]) == std::string::npos) continue;
+					break;
+				}
+				while(std::getline(*in, str)) {
+					if(str.empty()) break;
+					std::cout << str << std::endl;
+				}
+				std::cout << "End of assembler dump." << std::endl;
+				pclose(fp);
+				delete in;
+			}
+
+		}
+
+		return DBG_SUCCESS;
 	}
 
 	if(this->command == "quit") {

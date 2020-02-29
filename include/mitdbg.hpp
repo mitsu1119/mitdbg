@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <unordered_map>
+#include <cstdio>
 #include <csignal>
 #include <cstring>
 #include <cstdlib>
@@ -17,6 +18,7 @@
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
+#include <ext/stdio_filebuf.h>
 #include "signame.hpp"
 
 namespace fs = std::filesystem;
@@ -89,6 +91,7 @@ public:
 	std::unordered_map<std::string, u64> funcSymbols;
 
 	bool isElf();
+	bool isExistFuncSymbol(std::string funcName);
 };
 
 enum {
