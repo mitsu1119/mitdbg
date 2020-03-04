@@ -15,18 +15,17 @@ MyElf::MyElf(std::string fileName) {
 		this->phdr = (Elf64_Phdr *)(this->head + this->ehdr->e_phoff);
 		ifs.close();
 
-		std::cout << "Symbols:" << std::endl;
-
 		Elf64_Shdr *strtab = getShdr(".strtab");
 		Elf64_Shdr *symtab = getShdr(".symtab");
 		Elf64_Sym *symb;
 		char *symbname;
 
+		// std::cout << "Symbols:" << std::endl;
 		symb = (Elf64_Sym *)(this->head + symtab->sh_offset);
 		for(size_t i = 0; i < symtab->sh_size / symtab->sh_entsize; i++) {
 			if(symb->st_name) {
 				symbname = (char *)(this->head + strtab->sh_offset + symb->st_name);
-				std::cout << "\t[" << i << "]\t" << symbname << " " << std::hex << "0x" << symb->st_value << std::endl;
+				// std::cout << "\t[" << i << "]\t" << symbname << " " << std::hex << "0x" << symb->st_value << std::endl;
 				this->funcSymbols[std::string(symbname)] = symb->st_value;
 			}
 			symb = (Elf64_Sym *)((char *)symb + symtab->sh_entsize);
@@ -323,6 +322,40 @@ int MitDBG::printRegisters() {
 	return DBG_SUCCESS;
 }
 
+void MitDBG::printDisasStopped(u64 addr) {
+	FILE *fp;
+	std::string str;
+
+	std::cout << "[-------------------------------------code-------------------------------------]" << std::endl;
+
+	std::string com = "objdump -d -M intel " + this->traced.native() + " | grep $(printf '%x' " + std::to_string(addr) + "): -B4 | sed -e \'$d\'";
+	std::cout << "command = " << com << ", " << std::hex << this->baseAddr << std::endl;
+	fp = popen(com.c_str(), "r");
+	__gnu_cxx::stdio_filebuf<char> *fb = new __gnu_cxx::stdio_filebuf<char>(fp, std::ios_base::in);
+	std::istream *in = new std::istream((std::streambuf *)fb);
+	while(std::getline(*in, str)) {
+		std::cout << "   " << str << std::endl;
+	}
+	pclose(fp);
+	delete fb;
+	delete in;
+
+	com = "objdump -d -M intel " + this->traced.native() + " | grep $(printf '%x' " + std::to_string(addr) + "): -A4";
+	fp = popen(com.c_str(), "r");
+	fb = new __gnu_cxx::stdio_filebuf<char>(fp, std::ios_base::in);
+	in = new std::istream((std::streambuf *)fb);
+	std::cout << "=> ";
+	std::getline(*in, str);
+	std::cout << str << std::endl;
+	while(std::getline(*in, str)) {
+		std::cout << "   " << str << std::endl;
+	}
+	pclose(fp);
+	delete fb;
+	delete in;
+}
+ 
+
 void MitDBG::printSLine() {
 	std::cout << "[------------------------------------------------------------------------------]" << std::endl;
 }
@@ -362,10 +395,14 @@ int MitDBG::parentMain() {
 				} else if(signum == SIGTRAP) {
 					// get to break point
 					ptrace(PTRACE_GETREGS, this->target, 0, &regs);
-					u64 originalAddr = regs.rip - 1;
+					// Restore rip and int 3 code to original code
+					regs.rip = regs.rip - 1;
+					ptrace(PTRACE_SETREGS, this->target, 0, &regs);
+
 					printRegisters();
+					printDisasStopped((u64)regs.rip - this->baseAddr);
 					printSLine();
-					std::cout << "Breakpoint " << searchBreak((void *)originalAddr) + 1 << ", " << std::hex << originalAddr << std::endl;
+					std::cout << "Breakpoint " << searchBreak((void *)regs.rip) + 1 << ", " << std::hex << regs.rip << std::endl;
 				} else if(signum != (SIGTRAP | 0x80)) {
 					std::string signame = signum2name(signum);
 					std::cout << "Program received signal " << signame << std::endl;

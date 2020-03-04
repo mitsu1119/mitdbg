@@ -145,6 +145,9 @@ private:
 	// output registers
 	int printRegisters();
 
+	// print disassembled code to use when stopped by breakpoint and signal and so on
+	void printDisasStopped(u64 addr);
+
 	// output stlip line
 	void printSLine();
 
