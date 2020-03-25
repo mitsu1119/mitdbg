@@ -143,6 +143,8 @@ int MitDBG::launch() {
 		} else {
 			/* main process */
 			firstTrap();
+			// set breakpoints
+			for(size_t i = 0; i < this->breaks.size(); i++) setBreak(this->breaks[i].addr);
 			ptrace(PTRACE_CONT, this->target, 0, 0);
 		}
 
@@ -166,6 +168,9 @@ int MitDBG::launch() {
 		} else {
 			/* main process */
 			firstTrap();
+			// set breakpoints
+			for(size_t i = 0; i < this->breaks.size(); i++) setBreak(this->breaks[i].addr);
+
 			setBreak("main");
 			ptrace(PTRACE_CONT, this->target, 0, 0);
 		}
@@ -174,6 +179,14 @@ int MitDBG::launch() {
 	}
 
 	if(this->command == "continue" || this->command == "c") {
+		struct user_regs_struct regs;
+		ptrace(PTRACE_GETREGS, this->target, 0, &regs);
+		void *addr = (void *)regs.rip;
+
+		std::cout << "Continuing." << std::endl;
+		ptrace(PTRACE_SINGLESTEP, this->target, NULL, NULL);
+		waitpid(this->target, NULL, 0);
+		setBreak(addr);
 		ptrace(PTRACE_CONT, this->target, 0, 0);
 
 		return DBG_RUN;
@@ -259,6 +272,13 @@ int MitDBG::killTarget() {
 
 int MitDBG::setBreak(void *addr) {
 	long originalCode;
+
+	for(size_t i = 0; i < this->breaks.size(); i++) {
+		if(this->breaks[i].addr == addr) {
+			ptrace(PTRACE_POKETEXT, this->target, addr, (this->breaks[i].originalCode & 0xffffffffffffff00) | 0xcc);
+			return DBG_SUCCESS;
+		}
+	}
 
 	if(this->target != -1) {
 		originalCode = ptrace(PTRACE_PEEKTEXT, this->target, addr, NULL);
@@ -435,7 +455,7 @@ int MitDBG::parentMain() {
 					// Restore rip and int 3 code to original code
 					regs.rip = regs.rip - 1;
 					ptrace(PTRACE_SETREGS, this->target, 0, &regs);
-					removeBreak((void *)regs.rip);
+					restoreOriginalCodeForBreaks(searchBreak((void *)regs.rip));
 
 					printRegisters();
 					printDisasStopped((u64)regs.rip - this->baseAddr);
