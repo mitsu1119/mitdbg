@@ -173,6 +173,12 @@ int MitDBG::launch() {
 		return DBG_RUN;
 	}
 
+	if(this->command == "continue" || this->command == "c") {
+		ptrace(PTRACE_CONT, this->target, 0, 0);
+
+		return DBG_RUN;
+	}
+
 	if(this->command == "disas") {
 		if(this->commandArgv.size() <= 1) {
 			std::cout << "No frame selected." << std::endl;
@@ -216,6 +222,8 @@ int MitDBG::launch() {
 				infoBreaks();
 			}
 		}
+
+		return DBG_SUCCESS;
 	}
 
 	if(this->command == "quit" || this->command == "q") {
@@ -272,12 +280,17 @@ int MitDBG::setBreak(std::string funcName) {
 	return setBreak(addr);
 }
 
+int MitDBG::restoreOriginalCodeForBreaks(size_t idx) {
+	ptrace(PTRACE_POKETEXT, this->target, this->breaks[idx].addr, this->breaks[idx].originalCode);
+	return DBG_SUCCESS;
+}
+
 int MitDBG::removeBreak(void *addr) {
 	i64 idx = searchBreak(addr);
 	if(idx == -1) return DBG_ERR;
 
 	// restore addr to original text
-	ptrace(PTRACE_POKETEXT, this->target, addr, this->breaks[idx].originalCode);
+	restoreOriginalCodeForBreaks(idx);
 
 	this->breaks[idx] = this->breaks.back();
 	this->breaks.pop_back();
@@ -422,7 +435,7 @@ int MitDBG::parentMain() {
 					// Restore rip and int 3 code to original code
 					regs.rip = regs.rip - 1;
 					ptrace(PTRACE_SETREGS, this->target, 0, &regs);
-					// removeBreak((void *)regs.rip);
+					removeBreak((void *)regs.rip);
 
 					printRegisters();
 					printDisasStopped((u64)regs.rip - this->baseAddr);

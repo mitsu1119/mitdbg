@@ -136,6 +136,9 @@ private:
 	// set breakpoint at start address of the function named @funcName
 	int setBreak(std::string funcName);	
 
+	// restore the original code of a breakpoint indexd @idx
+	int restoreOriginalCodeForBreaks(size_t idx);
+
 	// remove breakpoint from this->breaks
 	int removeBreak(void *addr);
 
