@@ -207,7 +207,7 @@ int MitDBG::launch() {
 		return DBG_SUCCESS;
 	}
 
-	if(this->command == "quit") {
+	if(this->command == "quit" || this->command == "q") {
 		if(this->target != -1) killTarget();
 
 		return DBG_QUIT;
@@ -252,19 +252,24 @@ int MitDBG::setBreak(void *addr) {
 }
 
 int MitDBG::setBreak(std::string funcName) {
-	long originalCode;
 	void *addr = (void *)(this->targetElf->funcSymbols[funcName] + this->baseAddr);
 	if((u64)addr == 0) {
 		err(1, "The function %s was not found.", funcName.c_str());
 		return DBG_ERR;
 	}
 
-	if(this->target != -1) {
-		originalCode = ptrace(PTRACE_PEEKTEXT, this->target, addr, NULL);
-		ptrace(PTRACE_POKETEXT, this->target, addr, ((originalCode & 0xffffffffffffff00) | 0xcc));
-		this->breaks.emplace_back(addr, originalCode);
-		std::cout << "Breakpoint " << this->breaks.size() << " at " << std::hex << addr << std::endl;
-	}
+	return setBreak(addr);
+}
+
+int MitDBG::removeBreak(void *addr) {
+	i64 idx = searchBreak(addr);
+	if(idx == -1) return DBG_ERR;
+
+	// restore addr to original text
+	ptrace(PTRACE_POKETEXT, this->target, addr, this->breaks[idx].originalCode);
+
+	this->breaks[idx] = this->breaks.back();
+	this->breaks.pop_back();
 
 	return DBG_SUCCESS;
 }
@@ -398,6 +403,7 @@ int MitDBG::parentMain() {
 					// Restore rip and int 3 code to original code
 					regs.rip = regs.rip - 1;
 					ptrace(PTRACE_SETREGS, this->target, 0, &regs);
+					removeBreak((void *)regs.rip);
 
 					printRegisters();
 					printDisasStopped((u64)regs.rip - this->baseAddr);
