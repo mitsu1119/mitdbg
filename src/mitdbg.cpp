@@ -207,6 +207,17 @@ int MitDBG::launch() {
 		return DBG_SUCCESS;
 	}
 
+	if(this->command == "info") {
+		if(this->commandArgv.size() <= 1) {
+			std::cout << "\"info\" must be followed by the name of an info command." << std::endl;
+		} else {
+			// breakpoints infomation
+			if(this->commandArgv[1] == "b") {
+				infoBreaks();
+			}
+		}
+	}
+
 	if(this->command == "quit" || this->command == "q") {
 		if(this->target != -1) killTarget();
 
@@ -365,6 +376,14 @@ void MitDBG::printSLine() {
 	std::cout << "[------------------------------------------------------------------------------]" << std::endl;
 }
 
+void MitDBG::infoBreaks() {
+	std::cout << "Num\tAddress" << std::endl;
+	for(size_t i = 0; i < this->breaks.size(); i++) {
+		std::cout << i + 1 << "\t" << std::hex << this->breaks[i].addr << std::endl;
+	}
+}
+
+
 /*
  * managing a child process and responsing the signal
  */
@@ -403,7 +422,7 @@ int MitDBG::parentMain() {
 					// Restore rip and int 3 code to original code
 					regs.rip = regs.rip - 1;
 					ptrace(PTRACE_SETREGS, this->target, 0, &regs);
-					removeBreak((void *)regs.rip);
+					// removeBreak((void *)regs.rip);
 
 					printRegisters();
 					printDisasStopped((u64)regs.rip - this->baseAddr);

@@ -154,6 +154,9 @@ private:
 	// output stlip line
 	void printSLine();
 
+	// breakpoint list
+	void infoBreaks();
+
 	// parent main loop
 	int parentMain();
 
