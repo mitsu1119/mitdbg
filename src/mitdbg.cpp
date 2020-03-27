@@ -231,6 +231,22 @@ int MitDBG::launch() {
 		return DBG_SUCCESS;
 	}
 
+	if(this->command == "delete" || this->command == "d") {
+		if(this->commandArgv.size() <= 1) {
+			while(this->breaks.size() != 0) removeBreak(this->breaks.back().addr);
+		} else {
+			if(std::isdigit(this->commandArgv[1][0])) {
+				i64 idx = std::stoi(this->commandArgv[1]) - 1;
+				if(idx < 0 || this->breaks.size() == 0 || (i64)this->breaks.size() < idx + 1) {
+					std::cout << "No breakpoint number " << std::dec << idx + 1 << "." << std::endl;
+					return DBG_SUCCESS;
+				}
+				removeBreak(this->breaks[idx].addr);
+			}
+		}
+		return DBG_SUCCESS;
+	}
+
 	if(this->command == "info") {
 		if(this->commandArgv.size() <= 1) {
 			std::cout << "\"info\" must be followed by the name of an info command." << std::endl;
