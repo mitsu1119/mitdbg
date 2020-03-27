@@ -191,7 +191,7 @@ int MitDBG::launch() {
 		std::cout << "Continuing." << std::endl;
 		ptrace(PTRACE_SINGLESTEP, this->target, NULL, NULL);
 		waitpid(this->target, NULL, 0);
-		setBreak((void *)(addr - this->baseAddr));
+		setBreak((void *)addr);
 		ptrace(PTRACE_CONT, this->target, 0, 0);
 
 		return DBG_RUN;
@@ -296,23 +296,23 @@ int MitDBG::setBreak(void *addr) {
 
 	for(size_t i = 0; i < this->breaks.size(); i++) {
 		if(this->breaks[i].addr == addr) {
-			ptrace(PTRACE_POKETEXT, this->target, (u64)addr + this->baseAddr, (this->breaks[i].originalCode & 0xffffffffffffff00) | 0xcc);
+			ptrace(PTRACE_POKETEXT, this->target, addr, (this->breaks[i].originalCode & 0xffffffffffffff00) | 0xcc);
 			return DBG_SUCCESS;
 		}
 	}
 
 	if(this->target != -1) {
-		originalCode = ptrace(PTRACE_PEEKTEXT, this->target, (u64)addr + this->baseAddr, NULL);
-		ptrace(PTRACE_POKETEXT, this->target, (u64)addr + this->baseAddr, ((originalCode & 0xffffffffffffff00) | 0xcc));
+		originalCode = ptrace(PTRACE_PEEKTEXT, this->target, addr, NULL);
+		ptrace(PTRACE_POKETEXT, this->target, addr, ((originalCode & 0xffffffffffffff00) | 0xcc));
 		this->breaks.emplace_back(addr, originalCode);
-		std::cout << "Breakpoint " << this->breaks.size() << " at " << std::hex << (u64)addr + this->baseAddr << std::endl;
+		std::cout << "Breakpoint " << this->breaks.size() << " at " << std::hex << (u64)addr << std::endl;
 	}
 
 	return DBG_SUCCESS;
 }
 
 int MitDBG::setBreak(std::string funcName) {
-	void *addr = (void *)this->targetElf->funcSymbols[funcName];
+	void *addr = (void *)(this->targetElf->funcSymbols[funcName] + this->baseAddr);
 	if((u64)addr == 0) {
 		err(1, "The function %s was not found.", funcName.c_str());
 		return DBG_ERR;
@@ -322,7 +322,7 @@ int MitDBG::setBreak(std::string funcName) {
 }
 
 int MitDBG::restoreOriginalCodeForBreaks(size_t idx) {
-	ptrace(PTRACE_POKETEXT, this->target, (u64)this->breaks[idx].addr + this->baseAddr, this->breaks[idx].originalCode);
+	ptrace(PTRACE_POKETEXT, this->target, (u64)this->breaks[idx].addr, this->breaks[idx].originalCode);
 	return DBG_SUCCESS;
 }
 
@@ -398,6 +398,7 @@ void MitDBG::printDisasStopped(u64 addr) {
 
 	std::cout << "[-------------------------------------code-------------------------------------]" << std::endl;
 
+	addr -= this->baseAddr;
 	std::string com = "objdump -d -M intel " + this->traced.native() + " | grep $(printf '%x' " + std::to_string(addr) + "): -B4 | sed -e \'$d\'";
 	std::cout << "command = " << com << ", " << std::hex << this->baseAddr << std::endl;
 	fp = popen(com.c_str(), "r");
@@ -433,7 +434,7 @@ void MitDBG::printSLine() {
 void MitDBG::infoBreaks() {
 	std::cout << "Num\tAddress" << std::endl;
 	for(size_t i = 0; i < this->breaks.size(); i++) {
-		std::cout << i + 1 << "\t" << std::hex << (u64)this->breaks[i].addr + this->baseAddr << std::endl;
+		std::cout << i + 1 << "\t" << std::hex << (u64)this->breaks[i].addr << std::endl;
 	}
 }
 
@@ -460,12 +461,10 @@ int MitDBG::parentMain() {
 			if(WIFEXITED(status)) {
 				std::cout << "[process " << std::dec << this->target << " exited normaly]" << std::endl << std::endl;
 				this->target = -1;
-				this->baseAddr = 0;
 			} else if(WIFSIGNALED(status)) {
 				signum = WSTOPSIG(status);
 				std::cout << "[process " << std::dec << this->target << " exited signal " << signum << "]" << std::endl;
 				this->target = -1;
-				this->baseAddr = 0;
 			} else if(WIFSTOPPED(status)) {
 				signum = WSTOPSIG(status);
 				if(signum == (SIGTRAP | 0x80)) {
@@ -478,10 +477,10 @@ int MitDBG::parentMain() {
 					// Restore rip and int 3 code to original code
 					regs.rip = regs.rip - 1;
 					ptrace(PTRACE_SETREGS, this->target, 0, &regs);
-					restoreOriginalCodeForBreaks(searchBreak((void *)(regs.rip - this->baseAddr)));
+					restoreOriginalCodeForBreaks(searchBreak((void *)regs.rip));
 
 					printRegisters();
-					printDisasStopped((u64)regs.rip - this->baseAddr);
+					printDisasStopped(regs.rip);
 					printSLine();
 					std::cout << "Breakpoint " << searchBreak((void *)regs.rip) + 1 << ", " << std::hex << regs.rip << std::endl;
 				} else if(signum != (SIGTRAP | 0x80)) {
@@ -493,7 +492,6 @@ int MitDBG::parentMain() {
 				err(1, "error status %d, Wait child process\n\t", status);
 				kill(this->target, SIGKILL);
 				this->target = -1;
-				this->baseAddr = 0;
 				return DBG_ERR;
 			}
 		}
@@ -503,6 +501,15 @@ int MitDBG::parentMain() {
 }
 
 int MitDBG::main() {
+	// disable ASLR
+	int old, rc;
+	old = personality(0xffffffff);
+	rc = personality(old | ADDR_NO_RANDOMIZE);
+	if(rc == -1) {
+		err(1, "Personality error.\n\t");
+		return DBG_ERR;
+	}
+
 	parentMain();
 
 	return DBG_SUCCESS;

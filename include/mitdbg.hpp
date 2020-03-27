@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
+#include <sys/personality.h>
 #include <sys/user.h>
 #include <ext/stdio_filebuf.h>
 #include "signame.hpp"
