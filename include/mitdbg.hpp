@@ -133,9 +133,9 @@ private:
 	int killTarget();
 
 	// set breakpoint
-	int setBreak(void *addr);
+	int setBreak(void *addr, bool writeFlag = true);
 	// set breakpoint at start address of the function named @funcName
-	int setBreak(std::string funcName);	
+	int setBreak(std::string funcName, bool writeFlag = true);	
 
 	// restore the original code of a breakpoint indexd @idx
 	int restoreOriginalCodeForBreaks(size_t idx);

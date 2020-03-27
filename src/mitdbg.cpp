@@ -25,7 +25,7 @@ MyElf::MyElf(std::string fileName) {
 		for(size_t i = 0; i < symtab->sh_size / symtab->sh_entsize; i++) {
 			if(symb->st_name) {
 				symbname = (char *)(this->head + strtab->sh_offset + symb->st_name);
-				// std::cout << "\t[" << i << "]\t" << symbname << " " << std::hex << "0x" << symb->st_value << std::endl;
+				std::cout << "\t[" << i << "]\t" << symbname << " " << std::hex << "0x" << symb->st_value << std::endl;
 				this->funcSymbols[std::string(symbname)] = symb->st_value;
 			}
 			symb = (Elf64_Sym *)((char *)symb + symtab->sh_entsize);
@@ -231,6 +231,28 @@ int MitDBG::launch() {
 		return DBG_SUCCESS;
 	}
 
+	if(this->command == "break" || this->command == "b") {
+		struct user_regs_struct regs;
+		ptrace(PTRACE_GETREGS, this->target, 0, &regs);
+
+		if(this->commandArgv.size() <= 1) {
+			setBreak((void *)regs.rip, false);
+			return DBG_SUCCESS;
+		}
+		if(this->commandArgv[1][0] == '*') {
+			// address
+			u64 x = std::stoull(this->commandArgv[1].substr(1, this->commandArgv[1].size() - 1), nullptr, 0);
+			if(x == regs.rip) setBreak((void *)x, false);
+			else setBreak((void *)x);
+			return DBG_SUCCESS;
+		}
+		// symbol
+		void *x = (void *)(this->targetElf->funcSymbols[this->commandArgv[1]] + this->baseAddr);
+		if((u64)x == regs.rip) setBreak(this->commandArgv[1], false);
+		else setBreak(this->commandArgv[1]);
+		return DBG_SUCCESS;
+	}
+
 	if(this->command == "delete" || this->command == "d") {
 		if(this->commandArgv.size() <= 1) {
 			while(this->breaks.size() != 0) removeBreak(this->breaks.back().addr);
@@ -291,19 +313,19 @@ int MitDBG::killTarget() {
 	return DBG_SUCCESS;
 }
 
-int MitDBG::setBreak(void *addr) {
+int MitDBG::setBreak(void *addr, bool writeFlag) {
 	long originalCode;
 
 	for(size_t i = 0; i < this->breaks.size(); i++) {
 		if(this->breaks[i].addr == addr) {
-			ptrace(PTRACE_POKETEXT, this->target, addr, (this->breaks[i].originalCode & 0xffffffffffffff00) | 0xcc);
+			if(writeFlag) ptrace(PTRACE_POKETEXT, this->target, addr, (this->breaks[i].originalCode & 0xffffffffffffff00) | 0xcc);
 			return DBG_SUCCESS;
 		}
 	}
 
 	if(this->target != -1) {
 		originalCode = ptrace(PTRACE_PEEKTEXT, this->target, addr, NULL);
-		ptrace(PTRACE_POKETEXT, this->target, addr, ((originalCode & 0xffffffffffffff00) | 0xcc));
+		if(writeFlag) ptrace(PTRACE_POKETEXT, this->target, addr, ((originalCode & 0xffffffffffffff00) | 0xcc));
 		this->breaks.emplace_back(addr, originalCode);
 		std::cout << "Breakpoint " << this->breaks.size() << " at " << std::hex << (u64)addr << std::endl;
 	}
@@ -311,14 +333,14 @@ int MitDBG::setBreak(void *addr) {
 	return DBG_SUCCESS;
 }
 
-int MitDBG::setBreak(std::string funcName) {
+int MitDBG::setBreak(std::string funcName, bool writeFlag) {
 	void *addr = (void *)(this->targetElf->funcSymbols[funcName] + this->baseAddr);
 	if((u64)addr == 0) {
 		err(1, "The function %s was not found.", funcName.c_str());
 		return DBG_ERR;
 	}
 
-	return setBreak(addr);
+	return setBreak(addr, writeFlag);
 }
 
 int MitDBG::restoreOriginalCodeForBreaks(size_t idx) {
