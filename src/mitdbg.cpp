@@ -197,6 +197,27 @@ int MitDBG::launch() {
 		return DBG_RUN;
 	}
 
+	if(this->command == "step" || this->command == "s") {
+		struct user_regs_struct regs;
+
+		if(this->target == -1) {
+			std::cout << "The program is not being run." << std::endl;
+			return DBG_SUCCESS;
+		}
+
+		ptrace(PTRACE_GETREGS, this->target, 0, &regs);
+		u64 addr = regs.rip;
+
+		std::cout << "STEP " << std::hex << addr << std::endl;
+		ptrace(PTRACE_SINGLESTEP, this->target, NULL, NULL);
+		waitpid(this->target, NULL, 0);
+		ptrace(PTRACE_GETREGS, this->target, 0, &regs);
+		std::cout << std::hex << regs.rip << std::endl;
+		setBreak((void *)addr);
+
+		return DBG_SUCCESS;
+	}
+
 	if(this->command == "disas") {
 		if(this->commandArgv.size() <= 1) {
 			std::cout << "No frame selected." << std::endl;
